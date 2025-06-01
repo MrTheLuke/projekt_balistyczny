@@ -1,0 +1,6 @@
+masa=0.008
+predkosc_poczatkowa=715
+kat_wystrzalu=45
+opor_powietrza=0.15
+wysokosc_startowa=0
+g=9.81
