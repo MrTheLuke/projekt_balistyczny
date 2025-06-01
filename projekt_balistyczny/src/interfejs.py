@@ -1,6 +1,6 @@
 # src/interfejs.py
 
-from konfiguracja import Konfiguracja
+from src.konfiguracja import Konfiguracja
 import os
 
 def wczytaj_float(opis, domyslna, jednostka, min_val=None, max_val=None):
