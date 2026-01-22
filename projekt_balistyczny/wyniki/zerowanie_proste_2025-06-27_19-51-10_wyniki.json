@@ -1,0 +1,8 @@
+{
+    "zero_distance_m": 700.0,
+    "barrel_elevation_deg": 3.86767,
+    "barrel_elevation_rad": 0.0675,
+    "v0_kmh": 900,
+    "v0_mps": 250.0,
+    "drag_coefficient": 0.2
+}

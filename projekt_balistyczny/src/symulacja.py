@@ -1,56 +1,53 @@
-# symulacja.py
-# Plik odpowiedzialny za uruchomienie symulacji balistycznej przez interfejs py_ballistics
-
-import os
 import subprocess
-import numpy as np
-import matplotlib.pyplot as plt
-import datetime
 import json
+import os
 
-# Funkcja odpowiedzialna za wykonanie symulacji balistycznej
-# przy użyciu zewnętrznego projektu py_ballistics
-def wykonaj_symulacje(konfiguracja):
-    """
-    Funkcja wykonuje symulację na podstawie dostarczonej konfiguracji.
-    Argument:
-        konfiguracja (dict): Słownik z parametrami pocisku i warunków.
-    """
-    # Zapisywanie konfiguracji tymczasowej do pliku JSON (lub TOML jeśli wymagane)
-    tymczasowy_plik = "dane/tymczasowa_konfiguracja.json"
-    with open(tymczasowy_plik, "w") as f:
-        json.dump(konfiguracja, f)
+def uruchom_symulacje(typ, konfiguracja, zapisz_wyniki):
+    dane = {
+        "v0": konfiguracja.predkosc_poczatkowa,
+        "mass": konfiguracja.masa,
+        "drag": konfiguracja.opor_powietrza,
+        "zapisz_wyniki": zapisz_wyniki
+    }
 
-    # Upewniamy się, że ścieżka do py_ballistics została podana poprawnie (np. wirtualne środowisko)
-    sciezka_do_pyballistics = konfiguracja.get("sciezka_pyballistics", "../py_ballistics")
-    skrypt_wywolujacy = os.path.join(sciezka_do_pyballistics, "run_simulation.py")
+    dodatkowe = {}
 
-    if not os.path.isfile(skrypt_wywolujacy):
-        print("Nie znaleziono skryptu run_simulation.py w py_ballistics.")
-        return
+    if typ == 1:
+        dystans = input("Podaj odległość zerowania [m] (np. 100): ")
+        try:
+            dodatkowe["zero_distance"] = float(dystans)
+        except:
+            dodatkowe["zero_distance"] = 100.0
 
-    # Wywołanie symulacji przez subprocess (lub os.system, ale subprocess jest bezpieczniejszy)
-    print("\n[INFO] Uruchamianie symulacji...")
-    try:
-        wynik = subprocess.run([
-            "python", skrypt_wywolujacy, tymczasowy_plik
-        ], capture_output=True, text=True, check=True)
+    if typ == 2 or typ == 3 or typ == 4:
+        wysokosc = input("Podaj wysokość celownika [m] (np. 0.05): ")
+        try:
+            dodatkowe["sight_height"] = float(wysokosc)
+        except:
+            dodatkowe["sight_height"] = 0.05
 
-        print("\n[WYNIK SYMULACJI - Terminal]")
-        print(wynik.stdout)
+    if typ == 3 or typ == 4:
+        dystans = input("Podaj odległość do celu [m]: ")
+        try:
+            dodatkowe["target_distance"] = float(dystans)
+        except:
+            dodatkowe["target_distance"] = 500
 
-        # Zapisywanie wyników do pliku
-        teraz = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        plik_wyniku = f"wyniki/wynik_{teraz}.txt"
-        with open(plik_wyniku, "w") as f:
-            f.write(wynik.stdout)
+    if typ == 4:
+        kat = input("Podaj kąt patrzenia [stopnie]: ")
+        try:
+            dodatkowe["look_angle"] = float(kat)
+        except:
+            dodatkowe["look_angle"] = 25.0
 
-        print(f"\n[INFO] Wyniki zapisane w: {plik_wyniku}")
+    dane.update(dodatkowe)
 
-    except subprocess.CalledProcessError as e:
-        print("\n[BŁĄD SYMULACJI]")
-        print(e.stderr)
+    pliki = {
+        1: "zerowanie_proste.py",
+        2: "trajektoria_zagrozenia.py",
+        3: "rozwiazanie_z_karty.py",
+        4: "rozwiazanie_z_kata.py"
+    }
 
-# Komentarz do uruchamiania:
-# Program można wywołać poprzez interfejs terminalowy np. komendą:
-# python main.py
+    sciezka = os.path.join("symulacje", pliki[typ])
+    subprocess.run(["python3", sciezka], input=json.dumps(dane).encode())

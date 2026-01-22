@@ -1,46 +1,36 @@
-# main.py
-
-import os
-import sys
+from src.interfejs import wybierz_konfiguracje
+from src.symulacja import uruchom_symulacje
 import subprocess
-from src.konfiguracja import Konfiguracja
-from src.interfejs import wybierz_konfiguracje, zapytaj_parametry
-from src.symulacja import uruchom_symulacje, wyswietl_wyniki
-from src.optymalizacja import przeprowadz_optymalizacje
-
-# Ścieżka do py_ballistics (ustawić zgodnie z lokalizacją środowiska)
-SCIEZKA_PY_BALLISTICS = os.path.join(os.getcwd(), "py_ballistics")  # zmień jeśli inna
+import os
 
 def main():
-    print("=== Program balistyczny z wykorzystaniem py_ballistics ===\n")
+    print("=== Program balistyczny z wykorzystaniem py_ballisticcalc ===\n")
 
-    print("1. Wczytaj gotową konfigurację")
-    print("2. Wprowadź parametry ręcznie")
-    print("3. Przeprowadź optymalizację")
-    wybor = input("Wybierz opcję (1-3): ")
-
-    if wybor == "1":
-        konfiguracja = wybierz_konfiguracje()
-    elif wybor == "2":
-        konfiguracja = zapytaj_parametry()
-    elif wybor == "3":
-        przeprowadz_optymalizacje(SCIEZKA_PY_BALLISTICS)
+    konfiguracja = wybierz_konfiguracje()
+    if not konfiguracja:
+        print("Nie wczytano konfiguracji.")
         return
+
+    print("\n--- Dostępne symulacje ---")
+    print("1. Zerowanie proste")
+    print("2. Trajektoria z przestrzenią zagrożenia")
+    print("3. Rozwiązanie z karty zasięgu")
+    print("4. Rozwiązanie z kąta patrzenia")
+    print("5. Porównanie modeli DragModelMultiBC")
+
+    wybor = input("Wybierz symulację (1-5): ")
+
+    if wybor == "5":
+        subprocess.run(["python3", os.path.join("symulacje", "wielokrotny_model_bc.py")])
+        return
+
+    zapisz = input("Czy zapisać wyniki do plików? (t/n): ").strip().lower()
+    zapisz_wyniki = zapisz == "t"
+
+    if wybor in ["1", "2", "3", "4"]:
+        uruchom_symulacje(int(wybor), konfiguracja, zapisz_wyniki)
     else:
-        print("Nieprawidłowy wybór.")
-        return
-
-    # Zapisz konfigurację i uruchom symulację
-    sciezka_do_danych = konfiguracja.zapisz_do_pliku("dane_konfiguracji.json")
-    uruchom_symulacje(SCIEZKA_PY_BALLISTICS, sciezka_do_danych)
-
-    # Wyświetlenie wyników
-    wyswietl_wyniki("wyniki.txt")
+        print("Niepoprawny wybór.")
 
 if __name__ == "__main__":
     main()
-
-"""
-# w katalogu głównym projektu
-# >>> python main.py
-"""

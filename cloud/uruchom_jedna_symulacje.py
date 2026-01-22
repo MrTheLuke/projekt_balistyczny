@@ -1,13 +1,16 @@
 import json
-import math
 import os
+import sys
 from datetime import datetime
 
-# -------------------------------------------------------
-# Tryb działania:
-# - Docker/VM: wejście w /wejscie, wyjście w /wyniki
-# - Lokalnie: wejście w cloud/parametry.json, wyjście w cloud/wyniki/
-# -------------------------------------------------------
+# wykresy
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+import importlib
+import pkgutil
+
 
 SCIEZKA_WEJSCIE_DOCKER = "/wejscie/parametry.json"
 SCIEZKA_WYNIKI_DOCKER = "/wyniki"
@@ -22,102 +25,152 @@ def wybierz_sciezki():
     return "LOKALNIE", SCIEZKA_WEJSCIE_LOKALNIE, SCIEZKA_WYNIKI_LOKALNIE
 
 
-def wczytaj_parametry(sciezka):
+def wczytaj_json(sciezka):
     with open(sciezka, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
-def zapisz_wynik(wynik, sciezka):
+def zapisz_json(dane, sciezka):
     os.makedirs(os.path.dirname(sciezka), exist_ok=True)
     with open(sciezka, "w", encoding="utf-8") as f:
-        json.dump(wynik, f, indent=4, ensure_ascii=False)
+        json.dump(dane, f, indent=4, ensure_ascii=False)
 
 
-def symulacja_rzut_ukosny_bez_oporu(v0_mps, kat_deg, h0_m=0.0, g=9.80665):
+def narysuj_wykres_trajektorii(traj, folder_wyniki):
+    x = None
+    y = None
+
+    if isinstance(traj, dict):
+        if "x_m" in traj and "y_m" in traj:
+            x = traj["x_m"]
+            y = traj["y_m"]
+        elif "punkty" in traj and isinstance(traj["punkty"], list):
+            x = [p.get("x_m") for p in traj["punkty"]]
+            y = [p.get("y_m") for p in traj["punkty"]]
+
+    if not x or not y:
+        return None
+
+    plt.figure()
+    plt.plot(x, y)
+    plt.xlabel("x [m]")
+    plt.ylabel("y [m]")
+    plt.title("Trajektoria")
+    sciezka_png = os.path.join(folder_wyniki, "trajektoria.png")
+    plt.savefig(sciezka_png, dpi=200, bbox_inches="tight")
+    plt.close()
+    return sciezka_png
+
+
+def dodaj_sciezke_dla_symulacje():
     """
-    Najprostsza realna symulacja: rzut ukośny bez oporu powietrza (SI).
-
-    Zwraca:
-    - czas_lotu_s
-    - zasieg_m
-    - h_max_m
+    Szuka katalogu 'symulacje' w repo (w kontenerze /app) i dodaje jego rodzica do sys.path,
+    żeby 'import symulacje' działał niezależnie od struktury.
     """
-    theta = math.radians(float(kat_deg))
-    v0 = float(v0_mps)
-    h0 = float(h0_m)
+    # repo root: .../cloud/uruchom_jedna_symulacje.py -> .../
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-    vx = v0 * math.cos(theta)
-    vy = v0 * math.sin(theta)
+    kandydaci = [
+        repo_root,
+        os.path.join(repo_root, "projekt_balistyczny"),
+        os.path.join(repo_root, "src"),
+    ]
 
-    # czas lotu: rozwiązanie y(t)=h0 + vy t - 0.5 g t^2 = 0
-    # t = (vy + sqrt(vy^2 + 2 g h0))/g  (dodatni pierwiastek)
-    disc = vy * vy + 2.0 * g * h0
-    if disc < 0:
-        # fizycznie nie powinno wyjść dla g>0 i h0>=0
-        disc = 0.0
-    t_f = (vy + math.sqrt(disc)) / g
+    # szybkie sprawdzenie kandydatów
+    for base in kandydaci:
+        sym_dir = os.path.join(base, "symulacje")
+        if os.path.isdir(sym_dir):
+            if base not in sys.path:
+                sys.path.insert(0, base)
+            return base, sym_dir
 
-    zasieg = vx * t_f
+    # jeśli nie znaleziono w typowych miejscach, zrób płytkie szukanie (max głębokość 3)
+    for root, dirs, _files in os.walk(repo_root):
+        depth = root[len(repo_root):].count(os.sep)
+        if depth > 3:
+            dirs[:] = []
+            continue
+        if "symulacje" in dirs:
+            base = root
+            sym_dir = os.path.join(root, "symulacje")
+            if base not in sys.path:
+                sys.path.insert(0, base)
+            return base, sym_dir
 
-    # maks wysokość: h_max = h0 + vy^2/(2g) jeśli vy>0, inaczej h0
-    if vy > 0:
-        h_max = h0 + (vy * vy) / (2.0 * g)
-    else:
-        h_max = h0
-
-    return {
-        "czas_lotu_s": round(t_f, 6),
-        "zasieg_m": round(zasieg, 6),
-        "h_max_m": round(h_max, 6)
-    }
+    return None, None
 
 
-def uruchom_symulacje(parametry):
-    """
-    Wersja A: realna symulacja (najprostszy model).
-    Parametry oczekiwane w JSON:
-      - kat_startowy_deg
-      - predkosc_poczatkowa_mps
-    Opcjonalnie:
-      - wysokosc_startowa_m
-    """
-    kat = parametry.get("kat_startowy_deg")
-    v0 = parametry.get("predkosc_poczatkowa_mps")
-    h0 = parametry.get("wysokosc_startowa_m", 0.0)
+def znajdz_i_uruchom_symulacje_z_repo(parametry):
+    kandydaci_funkcji = ["symuluj", "uruchom", "run", "main", "simulate"]
 
-    if kat is None or v0 is None:
-        raise ValueError("Brak wymaganych pól w parametry.json: kat_startowy_deg oraz predkosc_poczatkowa_mps")
+    base, sym_dir = dodaj_sciezke_dla_symulacje()
+    if not sym_dir:
+        raise RuntimeError(
+            "Nie znalazłem katalogu 'symulacje/' w repo. "
+            "Sprawdź czy istnieje (np. projekt_balistyczny/symulacje/)."
+        )
 
-    wynik_modelu = symulacja_rzut_ukosny_bez_oporu(v0_mps=v0, kat_deg=kat, h0_m=h0)
+    try:
+        import symulacje  # pakiet z repo (po dodaniu sys.path)
+    except Exception as e:
+        raise RuntimeError(
+            "Znalazłem katalog 'symulacje/', ale import się nie udał.\n"
+            "Upewnij się, że 'symulacje' jest pakietem (czyli ma plik __init__.py)."
+        ) from e
 
-    return {
-        "status": "OK",
-        "czas_uruchomienia": datetime.now().isoformat(),
-        "model": "rzut_ukosny_bez_oporu",
-        "parametry_wejsciowe": {
-            "kat_startowy_deg": kat,
-            "predkosc_poczatkowa_mps": v0,
-            "wysokosc_startowa_m": h0
-        },
-        "wynik_symulacji": wynik_modelu
-    }
+    for m in pkgutil.iter_modules(symulacje.__path__):
+        nazwa_modulu = f"symulacje.{m.name}"
+        try:
+            mod = importlib.import_module(nazwa_modulu)
+        except Exception:
+            continue
+
+        for fn_name in kandydaci_funkcji:
+            fn = getattr(mod, fn_name, None)
+            if callable(fn):
+                try:
+                    wynik = fn(parametry)
+                    return nazwa_modulu, fn_name, wynik
+                except TypeError:
+                    continue
+                except Exception:
+                    continue
+
+    raise RuntimeError(
+        "Nie udało się znaleźć uruchamialnej funkcji w 'symulacje/'.\n"
+        "Wymagane: moduł w symulacje/ z funkcją np. symuluj(parametry: dict)->dict."
+    )
 
 
 def main():
     tryb, sciezka_wejscie, folder_wyniki = wybierz_sciezki()
+    os.makedirs(folder_wyniki, exist_ok=True)
     sciezka_wynik_json = os.path.join(folder_wyniki, "wynik.json")
 
     print(f"=== START SYMULACJI (tryb: {tryb}) ===")
     print(">>> [INFO] Wejście:", sciezka_wejscie)
     print(">>> [INFO] Wyniki:", folder_wyniki)
 
-    if not os.path.exists(sciezka_wejscie):
-        raise FileNotFoundError(f"Brak pliku wejściowego: {sciezka_wejscie}")
+    parametry = wczytaj_json(sciezka_wejscie)
 
-    parametry = wczytaj_parametry(sciezka_wejscie)
-    wynik = uruchom_symulacje(parametry)
-    zapisz_wynik(wynik, sciezka_wynik_json)
+    modul, funkcja, wynik_surowy = znajdz_i_uruchom_symulacje_z_repo(parametry)
 
+    sciezka_wykresu = None
+    if isinstance(wynik_surowy, dict):
+        traj = wynik_surowy.get("trajektoria") or wynik_surowy.get("traj") or wynik_surowy.get("trajectory")
+        if traj is not None:
+            sciezka_wykresu = narysuj_wykres_trajektorii(traj, folder_wyniki)
+
+    wynik = {
+        "status": "OK",
+        "czas_uruchomienia": datetime.now().isoformat(),
+        "wywolanie": {"modul": modul, "funkcja": funkcja},
+        "parametry_wejsciowe": parametry,
+        "wynik_symulacji": wynik_surowy,
+        "pliki": {"trajektoria_png": sciezka_wykresu}
+    }
+
+    zapisz_json(wynik, sciezka_wynik_json)
     print(f"=== KONIEC SYMULACJI, wynik zapisany w: {sciezka_wynik_json} ===")
 
 

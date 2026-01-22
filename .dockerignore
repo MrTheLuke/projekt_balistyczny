@@ -1,0 +1,7 @@
+.git
+**/__pycache__
+**/*.pyc
+
+cloud/wyniki
+cloud/wyniki_z_azure
+cloud/wejscie_tmp

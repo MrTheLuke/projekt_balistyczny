@@ -1,0 +1,10 @@
+[
+  {"id": "zadanie_01", "kat_startowy_deg": 20, "predkosc_poczatkowa_mps": 80,  "opis": "seria 1"},
+  {"id": "zadanie_02", "kat_startowy_deg": 25, "predkosc_poczatkowa_mps": 90,  "opis": "seria 1"},
+  {"id": "zadanie_03", "kat_startowy_deg": 30, "predkosc_poczatkowa_mps": 100, "opis": "seria 1"},
+  {"id": "zadanie_04", "kat_startowy_deg": 35, "predkosc_poczatkowa_mps": 110, "opis": "seria 1"},
+  {"id": "zadanie_05", "kat_startowy_deg": 40, "predkosc_poczatkowa_mps": 120, "opis": "seria 2"},
+  {"id": "zadanie_06", "kat_startowy_deg": 45, "predkosc_poczatkowa_mps": 130, "opis": "seria 2"},
+  {"id": "zadanie_07", "kat_startowy_deg": 50, "predkosc_poczatkowa_mps": 140, "opis": "seria 2"},
+  {"id": "zadanie_08", "kat_startowy_deg": 55, "predkosc_poczatkowa_mps": 150, "opis": "seria 2"}
+]
