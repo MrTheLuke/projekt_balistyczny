@@ -1,6 +1,7 @@
 import csv
 import json
 import os
+from datetime import datetime
 
 ROOT = os.path.join("cloud", "wyniki_z_azure")
 STATUS_PATH = os.path.join(ROOT, "status.json")
@@ -14,6 +15,25 @@ def safe_get(d, path, default=None):
             return default
         cur = cur[p]
     return cur
+
+
+def parse_iso_dt(s):
+    """Parsuje ISO format; zwraca datetime albo None."""
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s)
+    except Exception:
+        return None
+
+
+def duration_seconds(start_iso, end_iso):
+    """Zwraca czas trwania w sekundach (float) albo pusty string."""
+    t0 = parse_iso_dt(start_iso)
+    t1 = parse_iso_dt(end_iso)
+    if (t0 is None) or (t1 is None):
+        return ""
+    return round((t1 - t0).total_seconds(), 3)
 
 
 def main():
@@ -33,11 +53,15 @@ def main():
         wynik_path = os.path.join(folder, "wynik.json")
         st = status_map.get(zad_id, {})
 
+        czas_start = st.get("czas_start", "")
+        czas_koniec = st.get("czas_koniec", "")
+
         row = {
             "id": zad_id,
             "status": st.get("status", "UNKNOWN"),
-            "czas_start": st.get("czas_start", ""),
-            "czas_koniec": st.get("czas_koniec", ""),
+            "czas_start": czas_start,
+            "czas_koniec": czas_koniec,
+            "czas_trwania_s": duration_seconds(czas_start, czas_koniec),
             "kat_startowy_deg": "",
             "predkosc_poczatkowa_mps": "",
             "zasieg_m": "",
@@ -53,7 +77,6 @@ def main():
             row["zasieg_m"] = safe_get(d, ["wynik_symulacji", "zasieg_m"], "")
             row["czas_lotu_s"] = safe_get(d, ["wynik_symulacji", "czas_lotu_s"], "")
 
-            # jeśli w statusie nie ma OK/ERROR, a wynik istnieje, ustaw OK
             if row["status"] == "UNKNOWN":
                 row["status"] = "OK"
 
@@ -63,7 +86,8 @@ def main():
         writer = csv.DictWriter(
             f,
             fieldnames=[
-                "id", "status", "czas_start", "czas_koniec",
+                "id", "status",
+                "czas_start", "czas_koniec", "czas_trwania_s",
                 "kat_startowy_deg", "predkosc_poczatkowa_mps",
                 "zasieg_m", "czas_lotu_s", "blad"
             ]
