@@ -1,15 +1,12 @@
 import json
 import os
 import sys
+import importlib
 from datetime import datetime
 
-# wykresy
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
-import importlib
-import pkgutil
 
 
 SCIEZKA_WEJSCIE_DOCKER = "/wejscie/parametry.json"
@@ -18,6 +15,8 @@ SCIEZKA_WYNIKI_DOCKER = "/wyniki"
 SCIEZKA_WEJSCIE_LOKALNIE = os.path.join("cloud", "parametry.json")
 SCIEZKA_WYNIKI_LOKALNIE = os.path.join("cloud", "wyniki")
 
+SCENARIUSZE_PATH = os.path.join("cloud", "scenariusze.json")
+
 
 def wybierz_sciezki():
     if os.path.isdir(SCIEZKA_WYNIKI_DOCKER) and os.path.isdir("/wejscie"):
@@ -25,28 +24,59 @@ def wybierz_sciezki():
     return "LOKALNIE", SCIEZKA_WEJSCIE_LOKALNIE, SCIEZKA_WYNIKI_LOKALNIE
 
 
-def wczytaj_json(sciezka):
-    with open(sciezka, "r", encoding="utf-8") as f:
+def repo_root():
+    # cloud/uruchom_jedna_symulacje.py -> repo root
+    return os.path.abspath(os.path.join(os.path.dirname(file), ".."))
+
+
+def dodaj_repo_do_sys_path():
+    root = repo_root()
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+
+def wczytaj_json(path):
+    with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
-def zapisz_json(dane, sciezka):
-    os.makedirs(os.path.dirname(sciezka), exist_ok=True)
-    with open(sciezka, "w", encoding="utf-8") as f:
-        json.dump(dane, f, indent=4, ensure_ascii=False)
+def zapisz_json(data, path):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
 
 
-def narysuj_wykres_trajektorii(traj, folder_wyniki):
+def narysuj_trajektorie(wynik_surowy, folder_wyniki):
+    """
+    Szukamy trajektorii w kilku typowych formatach:
+      - wynik["trajektoria"]["x_m"], ["y_m"]
+      - wynik["trajektoria"]["x"], ["y"]
+      - wynik["trajektoria"]["punkty"] = [{"x":..,"y":..},...]
+      - wynik["trajektoria"]["punkty"] = [{"x_m":..,"y_m":..},...]
+    Jeśli brak danych -> None.
+    """
+    if not isinstance(wynik_surowy, dict):
+        return None
+
+    traj = wynik_surowy.get("trajektoria") or wynik_surowy.get("traj") or wynik_surowy.get("trajectory")
+    if not isinstance(traj, dict):
+        return None
+
     x = None
     y = None
 
-    if isinstance(traj, dict):
-        if "x_m" in traj and "y_m" in traj:
-            x = traj["x_m"]
-            y = traj["y_m"]
-        elif "punkty" in traj and isinstance(traj["punkty"], list):
+    if "x_m" in traj and "y_m" in traj:
+        x, y = traj["x_m"], traj["y_m"]
+    elif "x" in traj and "y" in traj:
+        x, y = traj["x"], traj["y"]
+    elif "punkty" in traj and isinstance(traj["punkty"], list) and traj["punkty"]:
+        p0 = traj["punkty"][0]
+        if "x_m" in p0 and "y_m" in p0:
             x = [p.get("x_m") for p in traj["punkty"]]
             y = [p.get("y_m") for p in traj["punkty"]]
+        elif "x" in p0 and "y" in p0:
+            x = [p.get("x") for p in traj["punkty"]]
+            y = [p.get("y") for p in traj["punkty"]]
 
     if not x or not y:
         return None
@@ -56,123 +86,81 @@ def narysuj_wykres_trajektorii(traj, folder_wyniki):
     plt.xlabel("x [m]")
     plt.ylabel("y [m]")
     plt.title("Trajektoria")
-    sciezka_png = os.path.join(folder_wyniki, "trajektoria.png")
-    plt.savefig(sciezka_png, dpi=200, bbox_inches="tight")
+    out = os.path.join(folder_wyniki, "trajektoria.png")
+    plt.savefig(out, dpi=200, bbox_inches="tight")
     plt.close()
-    return sciezka_png
+    return out
 
 
-def dodaj_sciezke_dla_symulacje():
+def uruchom_scenariusz(parametry):
     """
-    Szuka katalogu 'symulacje' w repo (w kontenerze /app) i dodaje jego rodzica do sys.path,
-    żeby 'import symulacje' działał niezależnie od struktury.
+    parametry.json może zawierać:
+      - scenariusz: "scenariusz_1" (domyślnie) albo "scenariusz_2"
+      - pozostałe pola zależne od Twojego symulatora
     """
-    # repo root: .../cloud/uruchom_jedna_symulacje.py -> .../
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    if not os.path.exists(SCENARIUSZE_PATH):
+        raise FileNotFoundError(f"Brak pliku: {SCENARIUSZE_PATH}")
 
-    kandydaci = [
-        repo_root,
-        os.path.join(repo_root, "projekt_balistyczny"),
-        os.path.join(repo_root, "src"),
-    ]
-
-    # szybkie sprawdzenie kandydatów
-    for base in kandydaci:
-        sym_dir = os.path.join(base, "symulacje")
-        if os.path.isdir(sym_dir):
-            if base not in sys.path:
-                sys.path.insert(0, base)
-            return base, sym_dir
-
-    # jeśli nie znaleziono w typowych miejscach, zrób płytkie szukanie (max głębokość 3)
-    for root, dirs, _files in os.walk(repo_root):
-        depth = root[len(repo_root):].count(os.sep)
-        if depth > 3:
-            dirs[:] = []
-            continue
-        if "symulacje" in dirs:
-            base = root
-            sym_dir = os.path.join(root, "symulacje")
-            if base not in sys.path:
-                sys.path.insert(0, base)
-            return base, sym_dir
-
-    return None, None
+    scenariusze = wczytaj_json(SCENARIUSZE_PATH)
+    nazwa = parametry.get("scenariusz", "scenariusz_1")
 
 
-def znajdz_i_uruchom_symulacje_z_repo(parametry):
-    kandydaci_funkcji = ["symuluj", "uruchom", "run", "main", "simulate"]
 
-    base, sym_dir = dodaj_sciezke_dla_symulacje()
-    if not sym_dir:
-        raise RuntimeError(
-            "Nie znalazłem katalogu 'symulacje/' w repo. "
-            "Sprawdź czy istnieje (np. projekt_balistyczny/symulacje/)."
-        )
 
-    try:
-        import symulacje  # pakiet z repo (po dodaniu sys.path)
-    except Exception as e:
-        raise RuntimeError(
-            "Znalazłem katalog 'symulacje/', ale import się nie udał.\n"
-            "Upewnij się, że 'symulacje' jest pakietem (czyli ma plik __init__.py)."
-        ) from e
+    if nazwa not in scenariusze:
+        raise ValueError(f"Nieznany scenariusz: {nazwa}. Dostępne: {list(scenariusze.keys())}")
 
-    for m in pkgutil.iter_modules(symulacje.__path__):
-        nazwa_modulu = f"symulacje.{m.name}"
-        try:
-            mod = importlib.import_module(nazwa_modulu)
-        except Exception:
-            continue
+    cfg = scenariusze[nazwa]
+    modul = cfg["modul"]
+    funkcja = cfg["funkcja"]
 
-        for fn_name in kandydaci_funkcji:
-            fn = getattr(mod, fn_name, None)
-            if callable(fn):
-                try:
-                    wynik = fn(parametry)
-                    return nazwa_modulu, fn_name, wynik
-                except TypeError:
-                    continue
-                except Exception:
-                    continue
+    dodaj_repo_do_sys_path()
 
-    raise RuntimeError(
-        "Nie udało się znaleźć uruchamialnej funkcji w 'symulacje/'.\n"
-        "Wymagane: moduł w symulacje/ z funkcją np. symuluj(parametry: dict)->dict."
-    )
+    mod = importlib.import_module(modul)
+    fn = getattr(mod, funkcja, None)
+    if not callable(fn):
+        raise RuntimeError(f"W module '{modul}' nie ma wywoływalnej funkcji '{funkcja}'")
+
+    wynik_surowy = fn(parametry)  # <-- uruchomienie istniejącej symulacji z repo
+
+    # --- aliasy kluczy: żeby symulacja z repo na pewno dostała dane ---
+    # (nie psujemy oryginalnych pól, tylko dopisujemy zamienniki)
+    if "kat_startowy_deg" in parametry and "kat_deg" not in parametry:
+        parametry["kat_deg"] = parametry["kat_startowy_deg"]
+    if "predkosc_poczatkowa_mps" in parametry and "v0_mps" not in parametry:
+        parametry["v0_mps"] = parametry["predkosc_poczatkowa_mps"]
+    if "predkosc_poczatkowa_mps" in parametry and "v0" not in parametry:
+        parametry["v0"] = parametry["predkosc_poczatkowa_mps"]
+
+
+    return nazwa, cfg.get("opis", ""), modul, funkcja, wynik_surowy
 
 
 def main():
-    tryb, sciezka_wejscie, folder_wyniki = wybierz_sciezki()
+    tryb, wejscie, folder_wyniki = wybierz_sciezki()
     os.makedirs(folder_wyniki, exist_ok=True)
-    sciezka_wynik_json = os.path.join(folder_wyniki, "wynik.json")
+    out_json = os.path.join(folder_wyniki, "wynik.json")
 
     print(f"=== START SYMULACJI (tryb: {tryb}) ===")
-    print(">>> [INFO] Wejście:", sciezka_wejscie)
+    print(">>> [INFO] Wejście:", wejscie)
     print(">>> [INFO] Wyniki:", folder_wyniki)
+    parametry = wczytaj_json(wejscie)
+    nazwa, opis, modul, funkcja, wynik_surowy = uruchom_scenariusz(parametry)
 
-    parametry = wczytaj_json(sciezka_wejscie)
-
-    modul, funkcja, wynik_surowy = znajdz_i_uruchom_symulacje_z_repo(parametry)
-
-    sciezka_wykresu = None
-    if isinstance(wynik_surowy, dict):
-        traj = wynik_surowy.get("trajektoria") or wynik_surowy.get("traj") or wynik_surowy.get("trajectory")
-        if traj is not None:
-            sciezka_wykresu = narysuj_wykres_trajektorii(traj, folder_wyniki)
+    wykres = narysuj_trajektorie(wynik_surowy, folder_wyniki)
 
     wynik = {
         "status": "OK",
         "czas_uruchomienia": datetime.now().isoformat(),
-        "wywolanie": {"modul": modul, "funkcja": funkcja},
+        "scenariusz": {"nazwa": nazwa, "opis": opis, "modul": modul, "funkcja": funkcja},
         "parametry_wejsciowe": parametry,
         "wynik_symulacji": wynik_surowy,
-        "pliki": {"trajektoria_png": sciezka_wykresu}
+        "pliki": {"trajektoria_png": wykres}
     }
 
-    zapisz_json(wynik, sciezka_wynik_json)
-    print(f"=== KONIEC SYMULACJI, wynik zapisany w: {sciezka_wynik_json} ===")
+    zapisz_json(wynik, out_json)
+    print(f"=== KONIEC SYMULACJI, wynik zapisany w: {out_json} ===")
 
 
-if __name__ == "__main__":
+if __name__ == "main":
     main()
