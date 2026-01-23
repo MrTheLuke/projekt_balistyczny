@@ -1,0 +1,10 @@
+{
+  "id": "zadanie_06",
+  "opis": "seria_docker",
+  "tryb_json": true,
+  "kat_startowy_deg": 10,
+  "predkosc_poczatkowa_mps": 700,
+  "drag": 0.2,
+  "target_distance": 3000,
+  "look_angle": 25.0
+}

@@ -1,0 +1,11 @@
+CMD:
+docker run --rm -v /mnt/c/Users/Łukasz/Documents/obliczenia_w_chmurze/projekt_balistyczny/cloud/wyniki_kolejka/zadanie_13/wejscie:/wejscie -v /mnt/c/Users/Łukasz/Documents/obliczenia_w_chmurze/projekt_balistyczny/cloud/wyniki_kolejka/zadanie_13/wyniki:/wyniki balistyka:1
+
+STDOUT:
+=== START SYMULACJI (tryb: DOCKER/VM) ===
+>>> [INFO] Wejście: /wejscie/parametry.json
+>>> [INFO] Wyniki: /wyniki
+=== KONIEC SYMULACJI, status=OK, zapis: /wyniki/wynik.json ===
+
+
+STDERR:

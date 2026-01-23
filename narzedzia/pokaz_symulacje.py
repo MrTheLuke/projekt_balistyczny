@@ -1,49 +1,76 @@
 import os
 import sys
-import pkgutil
 import importlib
 import inspect
 
-def main():
-    repo = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+def repo_root():
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-    # repo może mieć kod w ./projekt_balistyczny/...
-    kandydaci = [
-        repo,
-        os.path.join(repo, "projekt_balistyczny"),
+def znajdz_symulacje_dir():
+    # Twoja struktura: repo/projekt_balistyczny/symulacje
+    d = os.path.join(repo_root(), "projekt_balistyczny", "symulacje")
+    if os.path.isdir(d):
+        return d, os.path.join(repo_root(), "projekt_balistyczny")
+    # awaryjnie: repo/symulacje
+    d2 = os.path.join(repo_root(), "symulacje")
+    if os.path.isdir(d2):
+        return d2, repo_root()
+    raise FileNotFoundError("Nie znalazłem folderu symulacje/")
+
+def czy_wyglada_na_CLI(tekst):
+    podejrzane = [
+        "json.load(sys.stdin)",
+        "sys.stdin",
+        "input(",
+        "argparse",
+        "if __name__ == '__main__'",
+        "parser.add_argument",
     ]
-    for p in kandydaci:
-        if p not in sys.path:
-            sys.path.insert(0, p)
+    return any(p in tekst for p in podejrzane)
 
-    try:
-        import symulacje
-    except Exception:
-        print("Nie mogę zaimportować pakietu 'symulacje'.")
-        print("Sprawdź czy istnieje folder projekt_balistyczny/symulacje/ i czy ma __init__.py.")
-        raise
+def main():
+    sym_dir, import_base = znajdz_symulacje_dir()
 
-    print("Znalezione moduły i funkcje w 'symulacje':\n")
-    for m in pkgutil.iter_modules(symulacje.__path__):
-        mod_name = f"symulacje.{m.name}"
+    if import_base not in sys.path:
+        sys.path.insert(0, import_base)
+
+    print("Folder symulacje:", sym_dir)
+    print("Import base:", import_base)
+    print()
+
+    pliki = [p for p in os.listdir(sym_dir) if p.endswith(".py") and p != "__init__.py"]
+    pliki.sort()
+
+    print("Moduły w symulacje/ (z pominięciem CLI):\n")
+
+    for plik in pliki:
+        path = os.path.join(sym_dir, plik)
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            src = f.read()
+
+        if czy_wyglada_na_CLI(src):
+            print(f"- {plik}: POMINIĘTY (wygląda na CLI / czyta stdin / input)")
+            continue
+
+        mod_name = "symulacje." + os.path.splitext(plik)[0]
         try:
             mod = importlib.import_module(mod_name)
         except Exception as e:
             print(f"- {mod_name}: import ERROR ({e})")
             continue
 
-        fns = []
+        funkcje = []
         for name, obj in vars(mod).items():
             if callable(obj) and inspect.isfunction(obj) and obj.__module__ == mod.__name__:
-                fns.append((name, str(inspect.signature(obj))))
+                funkcje.append((name, str(inspect.signature(obj))))
 
-        if not fns:
+        if not funkcje:
             print(f"- {mod_name}: (brak funkcji)")
         else:
             print(f"- {mod_name}:")
-            for name, sig in fns:
+            for name, sig in funkcje:
                 print(f"    {name}{sig}")
-        print()
+    print()
 
 if __name__ == "__main__":
     main()

@@ -1,7 +1,7 @@
 {
   "scenariusz_1": {
-    "opis": "Najprostszy scenariusz z repo",
-    "modul": "symulacje.TU_WPISZ_MODUL",
-    "funkcja": "TU_WPISZ_FUNKCJE"
+    "opis": "CLI: rozwiazanie_z_kata.py (stdin JSON -> stdout JSON)",
+    "typ": "cli",
+    "skrypt": "projekt_balistyczny/symulacje/rozwiazanie_z_kata.py"
   }
 }
