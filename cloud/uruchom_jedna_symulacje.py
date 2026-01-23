@@ -25,8 +25,7 @@ def wybierz_sciezki():
 
 
 def repo_root():
-    # cloud/uruchom_jedna_symulacje.py -> repo root
-    return os.path.abspath(os.path.join(os.path.dirname(file), ".."))
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 
 def dodaj_repo_do_sys_path():
@@ -46,38 +45,16 @@ def zapisz_json(data, path):
         json.dump(data, f, indent=4, ensure_ascii=False)
 
 
-def narysuj_trajektorie(wynik_surowy, folder_wyniki):
-    """
-    Szukamy trajektorii w kilku typowych formatach:
-      - wynik["trajektoria"]["x_m"], ["y_m"]
-      - wynik["trajektoria"]["x"], ["y"]
-      - wynik["trajektoria"]["punkty"] = [{"x":..,"y":..},...]
-      - wynik["trajektoria"]["punkty"] = [{"x_m":..,"y_m":..},...]
-    Jeśli brak danych -> None.
-    """
-    if not isinstance(wynik_surowy, dict):
+def narysuj_trajektorie(wynik, folder):
+    if not isinstance(wynik, dict):
         return None
 
-    traj = wynik_surowy.get("trajektoria") or wynik_surowy.get("traj") or wynik_surowy.get("trajectory")
+    traj = wynik.get("trajektoria") or wynik.get("traj") or wynik.get("trajectory")
     if not isinstance(traj, dict):
         return None
 
-    x = None
-    y = None
-
-    if "x_m" in traj and "y_m" in traj:
-        x, y = traj["x_m"], traj["y_m"]
-    elif "x" in traj and "y" in traj:
-        x, y = traj["x"], traj["y"]
-    elif "punkty" in traj and isinstance(traj["punkty"], list) and traj["punkty"]:
-        p0 = traj["punkty"][0]
-        if "x_m" in p0 and "y_m" in p0:
-            x = [p.get("x_m") for p in traj["punkty"]]
-            y = [p.get("y_m") for p in traj["punkty"]]
-        elif "x" in p0 and "y" in p0:
-            x = [p.get("x") for p in traj["punkty"]]
-            y = [p.get("y") for p in traj["punkty"]]
-
+    x = traj.get("x_m") or traj.get("x")
+    y = traj.get("y_m") or traj.get("y")
     if not x or not y:
         return None
 
@@ -86,45 +63,28 @@ def narysuj_trajektorie(wynik_surowy, folder_wyniki):
     plt.xlabel("x [m]")
     plt.ylabel("y [m]")
     plt.title("Trajektoria")
-    out = os.path.join(folder_wyniki, "trajektoria.png")
+    out = os.path.join(folder, "trajektoria.png")
     plt.savefig(out, dpi=200, bbox_inches="tight")
     plt.close()
     return out
 
 
-def uruchom_scenariusz(parametry):
-    """
-    parametry.json może zawierać:
-      - scenariusz: "scenariusz_1" (domyślnie) albo "scenariusz_2"
-      - pozostałe pola zależne od Twojego symulatora
-    """
-    if not os.path.exists(SCENARIUSZE_PATH):
-        raise FileNotFoundError(f"Brak pliku: {SCENARIUSZE_PATH}")
+def main():
+    tryb, wejscie, folder_wyniki = wybierz_sciezki()
+    os.makedirs(folder_wyniki, exist_ok=True)
 
-    scenariusze = wczytaj_json(SCENARIUSZE_PATH)
-    nazwa = parametry.get("scenariusz", "scenariusz_1")
+    print(f"=== START SYMULACJI (tryb: {tryb}) ===")
+    print(">>> [INFO] Wejście:", wejscie)
+    print(">>> [INFO] Wyniki:", folder_wyniki)
 
+    parametry = wczytaj_json(wejscie)
+    scen = wczytaj_json(SCENARIUSZE_PATH)
+    cfg = scen["scenariusz_1"]
 
-
-
-    if nazwa not in scenariusze:
-        raise ValueError(f"Nieznany scenariusz: {nazwa}. Dostępne: {list(scenariusze.keys())}")
-
-    cfg = scenariusze[nazwa]
     modul = cfg["modul"]
     funkcja = cfg["funkcja"]
 
-    dodaj_repo_do_sys_path()
-
-    mod = importlib.import_module(modul)
-    fn = getattr(mod, funkcja, None)
-    if not callable(fn):
-        raise RuntimeError(f"W module '{modul}' nie ma wywoływalnej funkcji '{funkcja}'")
-
-    wynik_surowy = fn(parametry)  # <-- uruchomienie istniejącej symulacji z repo
-
-    # --- aliasy kluczy: żeby symulacja z repo na pewno dostała dane ---
-    # (nie psujemy oryginalnych pól, tylko dopisujemy zamienniki)
+    # aliasy kluczy (częsty problem w Twoim repo)
     if "kat_startowy_deg" in parametry and "kat_deg" not in parametry:
         parametry["kat_deg"] = parametry["kat_startowy_deg"]
     if "predkosc_poczatkowa_mps" in parametry and "v0_mps" not in parametry:
@@ -132,35 +92,26 @@ def uruchom_scenariusz(parametry):
     if "predkosc_poczatkowa_mps" in parametry and "v0" not in parametry:
         parametry["v0"] = parametry["predkosc_poczatkowa_mps"]
 
+    dodaj_repo_do_sys_path()
+    mod = importlib.import_module(modul)
+    fn = getattr(mod, funkcja)
 
-    return nazwa, cfg.get("opis", ""), modul, funkcja, wynik_surowy
-
-
-def main():
-    tryb, wejscie, folder_wyniki = wybierz_sciezki()
-    os.makedirs(folder_wyniki, exist_ok=True)
-    out_json = os.path.join(folder_wyniki, "wynik.json")
-
-    print(f"=== START SYMULACJI (tryb: {tryb}) ===")
-    print(">>> [INFO] Wejście:", wejscie)
-    print(">>> [INFO] Wyniki:", folder_wyniki)
-    parametry = wczytaj_json(wejscie)
-    nazwa, opis, modul, funkcja, wynik_surowy = uruchom_scenariusz(parametry)
+    wynik_surowy = fn(parametry)
 
     wykres = narysuj_trajektorie(wynik_surowy, folder_wyniki)
 
-    wynik = {
+    out = {
         "status": "OK",
         "czas_uruchomienia": datetime.now().isoformat(),
-        "scenariusz": {"nazwa": nazwa, "opis": opis, "modul": modul, "funkcja": funkcja},
+        "scenariusz": {"modul": modul, "funkcja": funkcja, "opis": cfg.get("opis", "")},
         "parametry_wejsciowe": parametry,
         "wynik_symulacji": wynik_surowy,
         "pliki": {"trajektoria_png": wykres}
     }
 
-    zapisz_json(wynik, out_json)
-    print(f"=== KONIEC SYMULACJI, wynik zapisany w: {out_json} ===")
+    zapisz_json(out, os.path.join(folder_wyniki, "wynik.json"))
+    print("=== KONIEC SYMULACJI ===")
 
 
-if __name__ == "main":
+if __name__ == "__main__":
     main()
