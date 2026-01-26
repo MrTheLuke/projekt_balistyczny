@@ -15,13 +15,25 @@ SCIEZKA_WYNIKI_DOCKER = "/wyniki"
 SCIEZKA_WEJSCIE_LOKALNIE = os.path.join("cloud", "parametry.json")
 SCIEZKA_WYNIKI_LOKALNIE = os.path.join("cloud", "wyniki")
 
+SCIEZKA_WEJSCIE_DOCKER_EXAMPLE = "/wejscie/parametry.example.json"
+SCIEZKA_WEJSCIE_LOKALNIE_EXAMPLE = os.path.join("cloud", "parametry.example.json")
+
+
 SCENARIUSZE_PATH = os.path.join("cloud", "scenariusze.json")
 
 
 def wybierz_sciezki():
     if os.path.isdir(SCIEZKA_WYNIKI_DOCKER) and os.path.isdir("/wejscie"):
-        return "DOCKER/VM", SCIEZKA_WEJSCIE_DOCKER, SCIEZKA_WYNIKI_DOCKER
-    return "LOKALNIE", SCIEZKA_WEJSCIE_LOKALNIE, SCIEZKA_WYNIKI_LOKALNIE
+        # Docker/VM
+        if os.path.isfile(SCIEZKA_WEJSCIE_DOCKER):
+            return "DOCKER/VM", SCIEZKA_WEJSCIE_DOCKER, SCIEZKA_WYNIKI_DOCKER
+        return "DOCKER/VM", SCIEZKA_WEJSCIE_DOCKER_EXAMPLE, SCIEZKA_WYNIKI_DOCKER
+
+    # lokalnie
+    if os.path.isfile(SCIEZKA_WEJSCIE_LOKALNIE):
+        return "LOKALNIE", SCIEZKA_WEJSCIE_LOKALNIE, SCIEZKA_WYNIKI_LOKALNIE
+    return "LOKALNIE", SCIEZKA_WEJSCIE_LOKALNIE_EXAMPLE, SCIEZKA_WYNIKI_LOKALNIE
+
 
 
 def repo_root():

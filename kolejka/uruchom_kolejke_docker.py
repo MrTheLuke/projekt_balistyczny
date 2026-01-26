@@ -7,6 +7,18 @@ from datetime import datetime
 
 DOMYSLNY_IMAGE = "balistyka:1"
 
+def repo_root():
+    # katalog nadrzędny względem folderu "kolejka/"
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+def abs_wzgledem_repo(path_rel):
+    # zamienia ścieżkę względną na absolutną względem repo, bez użycia cwd
+    if os.path.isabs(path_rel):
+        return path_rel
+    return os.path.join(repo_root(), path_rel)
+
+
 def wczytaj_zadania(path):
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -42,8 +54,11 @@ def uruchom_jedno_zadanie(image, base_out, zadanie):
     out_dir, in_dir, wyn_dir, param_path = przygotuj_folder_zadania(base_out, zadanie)
 
 
-    in_dir_abs = os.path.abspath(in_dir)
-    wyn_dir_abs = os.path.abspath(wyn_dir)
+    in_dir_abs = abs_wzgledem_repo(in_dir)
+    wyn_dir_abs = abs_wzgledem_repo(wyn_dir)
+    os.makedirs(in_dir_abs, exist_ok=True)
+    os.makedirs(wyn_dir_abs, exist_ok=True)
+
 
 
     # Kontener czyta: /wejscie/parametry.json
